@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -10,7 +9,6 @@ namespace Editor
     [CustomEditor(typeof(AnimationController))]
     public class AnimationControllerEditor : UnityEditor.Editor
     {
-        private Type[] _implementations;
         private SerializedProperty _stepsProp;
         private ReorderableList _reorderableList;
         
@@ -18,9 +16,8 @@ namespace Editor
         
         private void OnEnable()
         {
-            _implementations = GetImplementations();
             _implementationsMenu = new GenericMenu();
-            foreach (var implementation in _implementations)
+            foreach (var implementation in GetImplementations())
             {
                 _implementationsMenu.AddItem(
                     new GUIContent(implementation.FullName), 
@@ -31,13 +28,16 @@ namespace Editor
             }
             
             _stepsProp = serializedObject.FindProperty("_animationSteps");
-            
-            _reorderableList = new ReorderableList(serializedObject, _stepsProp, true, true, true,true);
-            _reorderableList.drawHeaderCallback = DrawHeaderCallback;
-            _reorderableList.drawElementCallback = DrawElementCallback;
-            _reorderableList.elementHeightCallback = ElementHeightCallback;
-            _reorderableList.onAddCallback = list => _implementationsMenu.ShowAsContext();
+
+            _reorderableList = new ReorderableList(serializedObject, _stepsProp, true, true, true, true)
+            {
+                drawHeaderCallback = DrawHeaderCallback,
+                drawElementCallback = DrawElementCallback,
+                elementHeightCallback = ElementHeightCallback,
+                onAddDropdownCallback = (rect, list) => _implementationsMenu.ShowAsContext()
+            };
         }
+
 
         private void OnAddImplementation(object o)
         {
@@ -54,40 +54,36 @@ namespace Editor
         {
             var element = _reorderableList.serializedProperty.GetArrayElementAtIndex(index);
             var end = element.GetEndProperty();
-            var current = element.Copy();
-            current.Next(true);
-            var height = 0f;
-            do
-            {
-                if (SerializedProperty.EqualContents(current, end))
-                    break;
-                height += EditorGUI.GetPropertyHeight(current, true);
-            } while (current.Next(false));
+            var height = EditorGUIUtility.standardVerticalSpacing;
 
-            return height;
+            element.Next(true);
+            do {
+                if (SerializedProperty.EqualContents(element, end)) break;
+                height += EditorGUI.GetPropertyHeight(element, true) + EditorGUIUtility.standardVerticalSpacing;
+            } while (element.Next(false));
+            
+            return height;   
         }
 
         private void DrawElementCallback(Rect rect, int index, bool isactive, bool isfocused)
         {
             var element = _reorderableList.serializedProperty.GetArrayElementAtIndex(index);
             var end = element.GetEndProperty();
-            var current = element.Copy();
-            current.Next(true);
-            var offset = 0f;
-            do
-            {
-                if (SerializedProperty.EqualContents(current, end))
-                    break;
+            var offset = EditorGUIUtility.standardVerticalSpacing;
+
+            element.Next(true);
+            do {
+                if (SerializedProperty.EqualContents(element, end)) break;
                 EditorGUI.PropertyField(
                     new Rect(rect.x, rect.y + offset, rect.width, rect.height - offset),
-                    current,
-                    true
+                    element, true
                 );
-                offset += EditorGUI.GetPropertyHeight(current, true);
-            } while (current.Next(false));
+                offset += EditorGUI.GetPropertyHeight(element, true) + EditorGUIUtility.standardVerticalSpacing;
+            } while (element.Next(false));
         }
 
         private static void DrawHeaderCallback(Rect rect) => EditorGUI.LabelField(rect, "Animation Steps");
+
 
         public override void OnInspectorGUI()
         {
@@ -96,27 +92,11 @@ namespace Editor
             serializedObject.ApplyModifiedProperties();
         }
 
-        private static System.Type[] GetImplementations()
+        private static Type[] GetImplementations()
         {
             var interfaceType = typeof(IAnimationStep);
             var types = System.AppDomain.CurrentDomain.GetAssemblies().SelectMany(assembly => assembly.GetTypes());
             return types.Where(type => interfaceType.IsAssignableFrom(type) && !type.IsAbstract).ToArray();
-        }
-    }
-
-    public static class ExtensionMethods
-    {
-        public static IEnumerator<SerializedProperty> IterateChildren(this SerializedProperty property)
-        {
-            var end = property.GetEndProperty();
-            var current = property.Copy();
-            current.Next(true);
-            do
-            {
-                if (SerializedProperty.EqualContents(current, end))
-                    break;
-                yield return current.Copy();
-            } while (current.Next(false));            
         }
     }
 }
